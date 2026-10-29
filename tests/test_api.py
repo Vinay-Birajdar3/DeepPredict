@@ -54,7 +54,9 @@ def test_demo_routes_are_disabled_in_production(client, monkeypatch):
     monkeypatch.setattr(api_main.service_config, "app_env", "production")
 
     assert client.get("/api/engines").status_code == 404
-    assert client.get("/").status_code == 404
+    response = client.get("/", follow_redirects=False)
+    assert response.status_code == 307
+    assert response.headers["location"] == "/docs"
 
 
 def test_production_prediction_rejects_client_supplied_truth(client, monkeypatch):

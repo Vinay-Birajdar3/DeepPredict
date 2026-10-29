@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from fastapi import FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 import numpy as np
 import pandas as pd
@@ -374,9 +374,12 @@ if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
-@app.get("/", response_class=FileResponse, include_in_schema=False)
-async def serve_ui():
-    """Serves the minimalistic React dashboard."""
+@app.get("/", include_in_schema=False)
+async def serve_ui() -> Response:
+    """Serves the demo dashboard or directs production visitors to the API docs."""
+    if service_config.is_production:
+        return RedirectResponse(url="/docs")
+
     _require_demo_mode()
     index_file = STATIC_DIR / "index.html"
     if index_file.exists():
