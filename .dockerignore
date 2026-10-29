@@ -13,5 +13,9 @@ mlruns
 mlartifacts
 notebooks
 reports
+!reports/
+!reports/sample_sequence.json
 tests
 static
+!static/
+!static/production.html

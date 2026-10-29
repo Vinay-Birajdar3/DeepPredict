@@ -16,6 +16,8 @@ COPY src/ /app/src/
 COPY monitoring/ /app/monitoring/
 COPY api/ /app/api/
 COPY models/ /models/
+COPY static/production.html /app/static/production.html
+COPY reports/sample_sequence.json /app/static/sample_sequence.json
 
 RUN useradd --uid 10001 --create-home appuser \
     && mkdir -p /models \

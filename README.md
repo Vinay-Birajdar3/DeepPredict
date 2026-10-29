@@ -194,10 +194,11 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 ```
 
 `/health` is a readiness check and returns HTTP 503 when the model is unavailable;
-`/live` only reports whether the API process is responsive. The demo fleet,
-drift-on-benchmark-data, and static dashboard routes are disabled in production.
-Opening the service root (`/`) in production redirects to the interactive API
-documentation at `/docs`.
+`/live` only reports whether the API process is responsive. The benchmark fleet
+and drift-on-benchmark-data routes are disabled in production. The service root
+serves a production inference dashboard with model health, sequence prediction,
+and in-memory monitoring counters; `/docs` remains available for the API
+reference.
 Monitoring counters are process-local and in-memory; use an external metrics and
 logging platform for durable production observability.
 
