@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title description">
+  <title id="title">DeepPredict system architecture</title>
+  <desc id="description">C-MAPSS data flows through validation, preprocessing, training, and evaluation to model artifacts. The React browser interface sends requests to FastAPI, which uses the saved model and monitoring modules to return RUL predictions.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+    </marker>
+    <style>
+      .bg { fill: #f8fafc; }
+      .title { font: 700 28px Arial, sans-serif; fill: #0f172a; }
+      .subtitle { font: 14px Arial, sans-serif; fill: #475569; }
+      .section { font: 700 16px Arial, sans-serif; fill: #334155; }
+      .box { stroke-width: 1.5; rx: 12; }
+      .box-title { font: 700 16px Arial, sans-serif; fill: #0f172a; }
+      .box-text { font: 13px Arial, sans-serif; fill: #334155; }
+      .label { font: 12px Arial, sans-serif; fill: #475569; }
+      .line { fill: none; stroke: #64748b; stroke-width: 2; marker-end: url(#arrow); }
+      .data { fill: #eff6ff; stroke: #60a5fa; }
+      .ml { fill: #f5f3ff; stroke: #a78bfa; }
+      .artifact { fill: #ecfdf5; stroke: #34d399; }
+      .service { fill: #fff7ed; stroke: #fb923c; }
+      .monitor { fill: #fdf2f8; stroke: #f472b6; }
+      .ui { fill: #e0f2fe; stroke: #38bdf8; }
+    </style>
+  </defs>
+  <rect class="bg" width="1200" height="760"/>
+  <text class="title" x="48" y="52">DeepPredict | System Architecture</text>
+  <text class="subtitle" x="48" y="78">Model development flows into saved artifacts; FastAPI uses those artifacts to serve the React UI.</text>
+
+  <text class="section" x="48" y="127">1. Data and model development</text>
+  <rect class="box data" x="48" y="150" width="210" height="105"/>
+  <text class="box-title" x="68" y="181">C-MAPSS data</text>
+  <text class="box-text" x="68" y="205">data/raw/</text>
+  <text class="box-text" x="68" y="226">FD001–FD004 files</text>
+
+  <rect class="box data" x="320" y="150" width="230" height="105"/>
+  <text class="box-title" x="340" y="181">Load and validate</text>
+  <text class="box-text" x="340" y="205">src/data_loader.py</text>
+  <text class="box-text" x="340" y="226">RUL labels and integrity checks</text>
+
+  <rect class="box ml" x="612" y="150" width="230" height="105"/>
+  <text class="box-title" x="632" y="181">Prepare and train</text>
+  <text class="box-text" x="632" y="205">src/preprocessing.py</text>
+  <text class="box-text" x="632" y="226">src/dataset.py · src/train.py</text>
+
+  <rect class="box artifact" x="904" y="150" width="248" height="105"/>
+  <text class="box-title" x="924" y="181">Saved artifacts</text>
+  <text class="box-text" x="924" y="205">models/*.pt · scaler.joblib</text>
+  <text class="box-text" x="924" y="226">model_metadata.json</text>
+
+  <path class="line" d="M258 202 H310"/>
+  <path class="line" d="M550 202 H602"/>
+  <path class="line" d="M842 202 H894"/>
+
+  <text class="section" x="48" y="320">2. Live prediction application</text>
+  <rect class="box ui" x="48" y="350" width="240" height="118"/>
+  <text class="box-title" x="68" y="383">Browser</text>
+  <text class="box-text" x="68" y="407">React UI</text>
+  <text class="box-text" x="68" y="430">static/index.html</text>
+  <text class="box-text" x="68" y="451">http://localhost:8000/</text>
+
+  <rect class="box service" x="360" y="350" width="250" height="118"/>
+  <text class="box-title" x="380" y="383">FastAPI service</text>
+  <text class="box-text" x="380" y="407">api/main.py</text>
+  <text class="box-text" x="380" y="430">Validates requests and routes</text>
+  <text class="box-text" x="380" y="451">health · predict · fleet</text>
+
+  <rect class="box ml" x="690" y="350" width="250" height="118"/>
+  <text class="box-title" x="710" y="383">RUL inference</text>
+  <text class="box-text" x="710" y="407">src/predict.py</text>
+  <text class="box-text" x="710" y="430">Scale sequence and run PyTorch</text>
+  <text class="box-text" x="710" y="451">Return RUL and health status</text>
+
+  <rect class="box artifact" x="1000" y="350" width="152" height="118"/>
+  <text class="box-title" x="1018" y="383">Artifacts</text>
+  <text class="box-text" x="1018" y="407">Model</text>
+  <text class="box-text" x="1018" y="430">Scaler</text>
+  <text class="box-text" x="1018" y="451">Metadata</text>
+
+  <path class="line" d="M288 409 H350"/>
+  <text class="label" x="302" y="396">HTTP request</text>
+  <path class="line" d="M610 409 H680"/>
+  <path class="line" d="M940 409 H990"/>
+  <text class="label" x="944" y="396">load at startup</text>
+  <path class="line" d="M680 446 C660 500 320 500 288 446"/>
+  <text class="label" x="428" y="508">Prediction response</text>
+
+  <rect class="box monitor" x="360" y="555" width="792" height="105"/>
+  <text class="box-title" x="382" y="587">Monitoring and observability</text>
+  <text class="box-text" x="382" y="613">monitoring/prediction_monitor.py — predictions, latency, errors, non-negative RUL guardrail</text>
+  <text class="box-text" x="382" y="637">monitoring/data_quality.py · monitoring/drift_detection.py — input quality and sensor drift</text>
+  <path class="line" d="M485 468 V545"/>
+  <path class="line" d="M815 468 V545"/>
+  <text class="label" x="48" y="710">Training outputs: reports/ and mlruns/  |  Automated checks: tests/  |  Optional UI: dashboard/app.py (Streamlit)</text>
+</svg>

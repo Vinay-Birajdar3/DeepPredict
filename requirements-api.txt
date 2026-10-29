@@ -1,0 +1,10 @@
+# Tested direct runtime versions for the inference API.
+# Training, notebook, and experiment-tracking dependencies remain in requirements.txt.
+numpy==1.26.4
+pandas==2.3.3
+scikit-learn==1.9.1
+torch==2.15.0
+fastapi==0.162.0
+uvicorn[standard]==0.54.0
+pydantic==2.14.1
+joblib==1.6.0

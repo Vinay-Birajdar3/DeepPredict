@@ -1,0 +1,20 @@
+{
+  "model_name": "LSTM_FD001",
+  "evaluation_timestamp": "2026-10-26T12:13:22.955025",
+  "metrics": {
+    "mae": 9.965812559127807,
+    "rmse": 13.307551977938182,
+    "r2": 0.8897225707316909,
+    "phm_score": 296.3400367933146,
+    "mean_error": 0.9878155422210694,
+    "max_error": 39.628448486328125,
+    "sample_count": 100
+  },
+  "figures": {
+    "actual_vs_predicted": "C:\\Users\\Vinay\\DeepPredict\\reports\\figures\\lstm_fd001_actual_vs_pred.png",
+    "residuals": "C:\\Users\\Vinay\\DeepPredict\\reports\\figures\\lstm_fd001_residuals.png",
+    "error_distribution": "C:\\Users\\Vinay\\DeepPredict\\reports\\figures\\lstm_fd001_error_dist.png"
+  },
+  "hyperparameters": {},
+  "top_10_highest_error_engines": []
+}

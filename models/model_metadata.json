@@ -1,0 +1,36 @@
+{
+  "model_name": "LSTM_FD001",
+  "model_type": "lstm",
+  "window_length": 30,
+  "input_features": [
+    "s_2",
+    "s_3",
+    "s_4",
+    "s_7",
+    "s_8",
+    "s_9",
+    "s_11",
+    "s_12",
+    "s_13",
+    "s_14",
+    "s_15",
+    "s_17",
+    "s_20",
+    "s_21"
+  ],
+  "input_dimension": 14,
+  "best_epoch": 13,
+  "best_val_loss": 145.7572191145495,
+  "test_metrics": {
+    "mae": 9.965812559127807,
+    "rmse": 13.307551977938182,
+    "r2": 0.8897225707316909,
+    "phm_score": 296.3400367933146,
+    "mean_error": 0.9878155422210694,
+    "max_error": 39.628448486328125,
+    "sample_count": 100
+  },
+  "training_duration": 45.0,
+  "created_at": "2026-10-26T12:13:22",
+  "version": "1.0"
+}

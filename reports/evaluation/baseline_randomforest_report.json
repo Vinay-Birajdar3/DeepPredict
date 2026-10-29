@@ -1,0 +1,20 @@
+{
+  "model_name": "Baseline_RandomForest",
+  "evaluation_timestamp": "2026-10-26T12:12:54.135387",
+  "metrics": {
+    "mae": 12.723584076521185,
+    "rmse": 18.035080416410086,
+    "r2": 0.7974527004087333,
+    "phm_score": 1220.7046961493797,
+    "mean_error": 2.8444851048669055,
+    "max_error": 62.34171705843628,
+    "sample_count": 100
+  },
+  "figures": {
+    "actual_vs_predicted": "C:\\Users\\Vinay\\DeepPredict\\reports\\figures\\baseline_randomforest_actual_vs_pred.png",
+    "residuals": "C:\\Users\\Vinay\\DeepPredict\\reports\\figures\\baseline_randomforest_residuals.png",
+    "error_distribution": "C:\\Users\\Vinay\\DeepPredict\\reports\\figures\\baseline_randomforest_error_dist.png"
+  },
+  "hyperparameters": {},
+  "top_10_highest_error_engines": []
+}

@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DeepPredict | Turbofan Prognostics & Observability</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#f0f7ff',
+              500: '#3b82f6',
+              600: '#2563eb',
+            },
+            surface: {
+              DEFAULT: '#0b0f19',
+              card: '#111726',
+              hover: '#182032',
+              border: '#1e293b',
+              muted: '#64748b'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- React 18 & ReactDOM -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- Babel Standalone for JSX compilation -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    body {
+      background-color: #0b0f19;
+      color: #e2e8f0;
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      margin: 0;
+      padding: 0;
+      overflow-x: hidden;
+    }
+    /* Custom clean scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0b0f19;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1e293b;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #334155;
+    }
+  </style>
+</head>
+<body class="bg-[#0b0f19] text-slate-100 min-h-screen">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef } = React;
+
+    const SENSOR_META = {
+      s_3: { label: "HPC Outlet Temp", unit: "°R", code: "T30", color: "#38bdf8" },
+      s_2: { label: "LPC Outlet Temp", unit: "°R", code: "T24", color: "#818cf8" },
+      s_4: { label: "LPT Outlet Temp", unit: "°R", code: "T50", color: "#fb7185" },
+      s_7: { label: "HPC Pressure", unit: "psia", code: "P30", color: "#34d399" },
+      s_8: { label: "Physical Fan Speed", unit: "rpm", code: "Nf", color: "#fbbf24" },
+      s_9: { label: "Physical Core Speed", unit: "rpm", code: "Nc", color: "#f472b6" },
+      s_11: { label: "Static HPC Pressure", unit: "psia", code: "Ps30", color: "#a78bfa" },
+      s_12: { label: "Fuel Flow Ratio", unit: "pps/psi", code: "phi", color: "#4ade80" },
+      s_13: { label: "Corrected Fan Speed", unit: "rpm", code: "NRf", color: "#22d3ee" },
+      s_14: { label: "Corrected Core Speed", unit: "rpm", code: "NRc", color: "#e879f9" },
+      s_15: { label: "Bypass Ratio", unit: "-", code: "BPR", color: "#38bdf8" },
+      s_17: { label: "Bleed Enthalpy", unit: "-", code: "htBleed", color: "#cbd5e1" },
+      s_20: { label: "HPT Coolant Bleed", unit: "lbm/s", code: "W31", color: "#fb923c" },
+      s_21: { label: "LPT Coolant Bleed", unit: "lbm/s", code: "W32", color: "#2dd4bf" },
+    };
+
+    function StatusBadge({ status, size = "md" }) {
+      const isCritical = status === "CRITICAL";
+      const isWarning = status === "WARNING";
+      const isHealthy = status === "HEALTHY";
+
+      const bg = isCritical
+        ? "bg-rose-950/60 text-rose-300 border-rose-800/80"
+        : isWarning
+        ? "bg-amber-950/60 text-amber-300 border-amber-800/80"
+        : "bg-emerald-950/60 text-emerald-300 border-emerald-800/80";
+
+      const dot = isCritical
+        ? "bg-rose-500"
+        : isWarning
+        ? "bg-amber-500"
+        : "bg-emerald-500";
+
+      const padding = size === "sm" ? "px-2 py-0.5 text-xs" : "px-3 py-1 text-xs";
+
+      return (
+        <span className={`inline-flex items-center gap-1.5 font-mono uppercase tracking-wider font-semibold rounded border ${bg} ${padding}`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${dot}`}></span>
+          {status}
+        </span>
+      );
+    }
+
+    // Minimalistic SVG Line Chart for sensor degradation trajectory
+    function SensorTelemetryChart({ trajectory, activeSensors }) {
+      const [hoveredPoint, setHoveredPoint] = useState(null);
+      const svgRef = useRef(null);
+
+      if (!trajectory || trajectory.length === 0) {
+        return (
+          <div className="h-64 flex items-center justify-center text-slate-500 text-sm font-mono">
+            No telemetry data available.
+          </div>
+        );
+      }
+
+      const padding = { top: 20, right: 20, bottom: 30, left: 45 };
+      const width = 800;
+      const height = 260;
+      const innerWidth = width - padding.left - padding.right;
+      const innerHeight = height - padding.top - padding.bottom;
+
+      const cycles = trajectory.map(d => d.cycle);
+      const minCycle = Math.min(...cycles);
+      const maxCycle = Math.max(...cycles);
+
+      const sensorMinMax = {};
+      activeSensors.forEach(s => {
+        const vals = trajectory.map(d => d[s] ?? 0);
+        sensorMinMax[s] = {
+          min: Math.min(...vals),
+          max: Math.max(...vals),
+        };
+      });
+
+      const getX = (cycle) => {
+        if (maxCycle === minCycle) return padding.left;
+        return padding.left + ((cycle - minCycle) / (maxCycle - minCycle)) * innerWidth;
+      };
+
+      const getY = (val, sensorKey) => {
+        const { min, max } = sensorMinMax[sensorKey] || { min: 0, max: 1 };
+        const range = max - min || 1;
+        const norm = (val - min) / range;
+        return padding.top + (1 - norm) * innerHeight;
+      };
+
+      const paths = activeSensors.map(sensorKey => {
+        const points = trajectory.map(d => `${getX(d.cycle)},${getY(d[sensorKey], sensorKey)}`);
+        return {
+          sensorKey,
+          d: `M ${points.join(" L ")}`,
+          color: SENSOR_META[sensorKey]?.color || "#38bdf8",
+        };
+      });
+
+      const handleMouseMove = (e) => {
+        if (!svgRef.current) return;
+        const rect = svgRef.current.getBoundingClientRect();
+        const clientX = e.clientX - rect.left;
+        const normX = (clientX - padding.left) / innerWidth;
+        const clampedNorm = Math.max(0, Math.min(1, normX));
+        const cycleIdx = Math.round(clampedNorm * (trajectory.length - 1));
+        setHoveredPoint(trajectory[cycleIdx]);
+      };
+
+      return (
+        <div className="relative w-full">
+          <svg
+            ref={svgRef}
+            viewBox={`0 0 ${width} ${height}`}
+            className="w-full h-64 overflow-visible cursor-crosshair select-none"
+            onMouseMove={handleMouseMove}
+            onMouseLeave={() => setHoveredPoint(null)}
+          >
+            {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => {
+              const y = padding.top + ratio * innerHeight;
+              return (
+                <line
+                  key={i}
+                  x1={padding.left}
+                  y1={y}
+                  x2={width - padding.right}
+                  y2={y}
+                  stroke="#1e293b"
+                  strokeDasharray="4 4"
+                  strokeWidth="1"
+                />
+              );
+            })}
+
+            {[minCycle, Math.round((minCycle + maxCycle) / 2), maxCycle].map((c, i) => (
+              <text
+                key={i}
+                x={getX(c)}
+                y={height - 8}
+                fill="#64748b"
+                fontSize="11"
+                fontFamily="JetBrains Mono"
+                textAnchor="middle"
+              >
+                Cycle {c}
+              </text>
+            ))}
+
+            {paths.map(({ sensorKey, d, color }) => (
+              <path
+                key={sensorKey}
+                d={d}
+                fill="none"
+                stroke={color}
+                strokeWidth="1.75"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="transition-all duration-300"
+              />
+            ))}
+
+            {hoveredPoint && (
+              <g>
+                <line
+                  x1={getX(hoveredPoint.cycle)}
+                  y1={padding.top}
+                  x2={getX(hoveredPoint.cycle)}
+                  y2={height - padding.bottom}
+                  stroke="#94a3b8"
+                  strokeDasharray="2 2"
+                  strokeWidth="1"
+                />
+                {activeSensors.map(s => (
+                  <circle
+                    key={s}
+                    cx={getX(hoveredPoint.cycle)}
+                    cy={getY(hoveredPoint[s], s)}
+                    r="4"
+                    fill={SENSOR_META[s]?.color || "#38bdf8"}
+                    stroke="#0b0f19"
+                    strokeWidth="2"
+                  />
+                ))}
+              </g>
+            )}
+          </svg>
+
+          {hoveredPoint && (
+            <div className="mt-2 py-2 px-3 bg-[#111726] border border-slate-800 rounded flex flex-wrap items-center gap-4 text-xs font-mono">
+              <span className="text-slate-400 font-semibold">Cycle: <span className="text-white">{hoveredPoint.cycle}</span></span>
+              {activeSensors.map(s => (
+                <div key={s} className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: SENSOR_META[s]?.color || "#38bdf8" }}></span>
+                  <span className="text-slate-400">{SENSOR_META[s]?.code || s}:</span>
+                  <span className="text-white font-medium">{hoveredPoint[s]} {SENSOR_META[s]?.unit}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Observability & Drift Audit Component
+    function ObservabilityView({ monitoringStatus, driftReport, loadingDrift, onRefresh }) {
+      const [showRawJson, setShowRawJson] = useState(false);
+
+      return (
+        <div className="flex flex-col gap-6">
+          {/* Top KPI Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-[#111726] border border-slate-800 rounded-lg p-4">
+              <div className="text-[11px] font-mono uppercase text-slate-500 mb-1">Total Predictions</div>
+              <div className="text-2xl font-bold font-mono text-white">
+                {monitoringStatus?.total_predictions ?? 0}
+              </div>
+              <div className="text-xs font-mono text-emerald-400 mt-1 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                Error Rate: {((monitoringStatus?.error_rate ?? 0) * 100).toFixed(1)}%
+              </div>
+            </div>
+
+            <div className="bg-[#111726] border border-slate-800 rounded-lg p-4">
+              <div className="text-[11px] font-mono uppercase text-slate-500 mb-1">Inference Latency</div>
+              <div className="text-2xl font-bold font-mono text-blue-400">
+                {monitoringStatus?.avg_latency_ms ? monitoringStatus.avg_latency_ms.toFixed(1) : "—"}
+                <span className="text-xs font-normal text-slate-500 ml-1">ms</span>
+              </div>
+              <div className="text-xs font-mono text-slate-400 mt-1">
+                P95: {monitoringStatus?.p95_latency_ms ? monitoringStatus.p95_latency_ms.toFixed(1) : "—"} ms
+              </div>
+            </div>
+
+            <div className="bg-[#111726] border border-slate-800 rounded-lg p-4">
+              <div className="text-[11px] font-mono uppercase text-slate-500 mb-1">RUL Guardrail Clipped</div>
+              <div className="text-2xl font-bold font-mono text-white">
+                {monitoringStatus?.negative_predictions_clipped ?? 0}
+              </div>
+              <div className="text-xs font-mono text-slate-400 mt-1">
+                Non-Negative Physical Constraint Active
+              </div>
+            </div>
+
+            <div className="bg-[#111726] border border-slate-800 rounded-lg p-4">
+              <div className="text-[11px] font-mono uppercase text-slate-500 mb-1">Output RUL Mean</div>
+              <div className="text-2xl font-bold font-mono text-slate-200">
+                {monitoringStatus?.prediction_mean ? monitoringStatus.prediction_mean.toFixed(1) : "—"}
+                <span className="text-xs font-normal text-slate-500 ml-1">cyc</span>
+              </div>
+              <div className="text-xs font-mono text-slate-500 mt-1">
+                Range: {monitoringStatus?.prediction_min ? monitoringStatus.prediction_min.toFixed(0) : "—"} – {monitoringStatus?.prediction_max ? monitoringStatus.prediction_max.toFixed(0) : "—"} cyc
+              </div>
+            </div>
+          </div>
+
+          {/* Sensor Drift Audit Section */}
+          <div className="bg-[#111726] border border-slate-800 rounded-lg p-5">
+            <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-800">
+              <div>
+                <div className="flex items-center gap-2.5">
+                  <h3 className="text-sm font-semibold text-white tracking-tight">Sensor Distribution Drift & Stability</h3>
+                  <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-blue-950/60 text-blue-300 border border-blue-800">
+                    Two-Sample KS & PSI
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Audits incoming operational engine distributions against baseline training reference
+                </p>
+              </div>
+
+              <button
+                onClick={onRefresh}
+                disabled={loadingDrift}
+                className="flex items-center gap-2 px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-900 border border-slate-700 text-slate-200 text-xs font-mono rounded transition-colors"
+              >
+                {loadingDrift ? (
+                  <>
+                    <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                    Auditing...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    Re-Audit Distributions
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Drift Table */}
+            <div className="overflow-x-auto mt-4">
+              <table className="w-full text-left text-xs font-mono">
+                <thead>
+                  <tr className="border-b border-slate-800 text-slate-500">
+                    <th className="pb-2.5 font-medium">Sensor Feature</th>
+                    <th className="pb-2.5 font-medium">KS Statistic (D)</th>
+                    <th className="pb-2.5 font-medium">KS p-value</th>
+                    <th className="pb-2.5 font-medium">Population Stability (PSI)</th>
+                    <th className="pb-2.5 font-medium">Wasserstein Dist</th>
+                    <th className="pb-2.5 font-medium">Stability Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/50">
+                  {driftReport?.features?.map((item) => {
+                    const meta = SENSOR_META[item.sensor];
+                    const isHighShift = item.psi >= 0.20;
+                    const isModerate = item.psi >= 0.10 && item.psi < 0.20;
+
+                    const badgeClass = isHighShift
+                      ? "bg-rose-950/60 text-rose-300 border-rose-800/80"
+                      : isModerate
+                      ? "bg-amber-950/60 text-amber-300 border-amber-800/80"
+                      : "bg-emerald-950/60 text-emerald-300 border-emerald-800/80";
+
+                    const badgeText = isHighShift ? "DRIFT (PSI ≥ 0.20)" : isModerate ? "MODERATE" : "STABLE";
+
+                    return (
+                      <tr key={item.sensor} className="hover:bg-[#141b2d] transition-colors">
+                        <td className="py-2.5 text-slate-200 font-medium">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: meta?.color || "#38bdf8" }}></span>
+                            <span className="font-semibold">{meta?.code || item.sensor}</span>
+                            <span className="text-slate-500 font-normal">({meta?.label || item.sensor})</span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 text-slate-300">{item.ks_statistic.toFixed(4)}</td>
+                        <td className="py-2.5 text-slate-400 font-mono">
+                          {item.p_value === 0 ? "< 1e-10" : item.p_value.toFixed(6)}
+                        </td>
+                        <td className="py-2.5 font-bold text-white">
+                          {item.psi.toFixed(4)}
+                        </td>
+                        <td className="py-2.5 text-slate-400">{item.wasserstein_distance.toFixed(4)}</td>
+                        <td className="py-2.5">
+                          <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-mono border ${badgeClass}`}>
+                            {badgeText}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {(!driftReport?.features || driftReport.features.length === 0) && (
+                    <tr>
+                      <td colSpan="6" className="py-8 text-center text-slate-500">
+                        Loading drift metrics...
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Explanation Note */}
+            <div className="mt-4 pt-3 border-t border-slate-800/60 flex flex-wrap items-center justify-between text-[11px] font-mono text-slate-500 gap-2">
+              <div>
+                Thresholds: Stable (PSI &lt; 0.10) | Moderate Drift (0.10 &le; PSI &lt; 0.20) | Significant Drift (PSI &ge; 0.20)
+              </div>
+              <button
+                onClick={() => setShowRawJson(!showRawJson)}
+                className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
+              >
+                {showRawJson ? "Hide Raw Observability JSON" : "Show Raw Observability JSON"}
+              </button>
+            </div>
+
+            {showRawJson && (
+              <div className="mt-3 p-3 bg-[#0b0f19] border border-slate-800 rounded">
+                <pre className="text-[11px] font-mono text-slate-300 overflow-x-auto max-h-60">
+                  {JSON.stringify({ status: monitoringStatus, drift: driftReport }, null, 2)}
+                </pre>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    function App() {
+      const [engines, setEngines] = useState([]);
+      const [selectedUnit, setSelectedUnit] = useState(1);
+      const [engineDetail, setEngineDetail] = useState(null);
+      const [activeSensors, setActiveSensors] = useState(["s_3", "s_9", "s_15"]);
+      const [prediction, setPrediction] = useState(null);
+      const [loadingInference, setLoadingInference] = useState(false);
+      const [filterStatus, setFilterStatus] = useState("ALL");
+      const [searchQuery, setSearchQuery] = useState("");
+      const [apiHealth, setApiHealth] = useState(null);
+      const [activeTab, setActiveTab] = useState("prognostics");
+      const [monitoringStatus, setMonitoringStatus] = useState(null);
+      const [driftReport, setDriftReport] = useState(null);
+      const [loadingDrift, setLoadingDrift] = useState(false);
+
+      // Load initial engines list and health probe
+      useEffect(() => {
+        fetch("/health")
+          .then(r => r.json())
+          .then(setApiHealth)
+          .catch(e => console.error("Health probe failed", e));
+
+        fetch("/api/engines")
+          .then(r => r.json())
+          .then(data => {
+            setEngines(data);
+            if (data.length > 0) setSelectedUnit(data[0].unit_id);
+          })
+          .catch(e => console.error("Error loading engines", e));
+
+        loadObservability();
+      }, []);
+
+      const loadObservability = async () => {
+        setLoadingDrift(true);
+        try {
+          const [mRes, dRes] = await Promise.all([
+            fetch("/monitoring/status").then(r => r.json()),
+            fetch("/api/monitoring/drift").then(r => r.json()),
+          ]);
+          setMonitoringStatus(mRes);
+          setDriftReport(dRes);
+        } catch (e) {
+          console.error("Observability fetch failed", e);
+        } finally {
+          setLoadingDrift(false);
+        }
+      };
+
+      // Load selected engine detail
+      useEffect(() => {
+        if (!selectedUnit) return;
+        setPrediction(null);
+        fetch(`/api/engines/${selectedUnit}`)
+          .then(r => r.json())
+          .then(data => {
+            setEngineDetail(data);
+          })
+          .catch(e => console.error("Error loading engine details", e));
+      }, [selectedUnit]);
+
+      // Trigger real-time model inference
+      const handleRunInference = async () => {
+        if (!selectedUnit) return;
+        setLoadingInference(true);
+        try {
+          const res = await fetch(`/api/engines/${selectedUnit}/predict`, {
+            method: "POST",
+          });
+          const data = await res.json();
+          setPrediction(data);
+          fetch("/monitoring/status").then(r => r.json()).then(setMonitoringStatus);
+        } catch (err) {
+          console.error("Inference failed", err);
+        } finally {
+          setLoadingInference(false);
+        }
+      };
+
+      const toggleSensor = (sensorKey) => {
+        setActiveSensors(prev =>
+          prev.includes(sensorKey)
+            ? (prev.length > 1 ? prev.filter(s => s !== sensorKey) : prev)
+            : [...prev, sensorKey]
+        );
+      };
+
+      const filteredEngines = useMemo(() => {
+        return engines.filter(e => {
+          const matchesStatus =
+            filterStatus === "ALL" || e.status === filterStatus;
+          const matchesSearch =
+            searchQuery.trim() === "" || e.unit_id.toString().includes(searchQuery.trim());
+          return matchesStatus && matchesSearch;
+        });
+      }, [engines, filterStatus, searchQuery]);
+
+      const counts = useMemo(() => {
+        const c = { ALL: engines.length, HEALTHY: 0, WARNING: 0, CRITICAL: 0 };
+        engines.forEach(e => {
+          if (c[e.status] !== undefined) c[e.status]++;
+        });
+        return c;
+      }, [engines]);
+
+      return (
+        <div className="min-h-screen bg-[#0b0f19] text-slate-200">
+          {/* Header Bar */}
+          <header className="border-b border-slate-800 bg-[#0e1320] px-6 py-3 sticky top-0 z-30">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded bg-blue-600 flex items-center justify-center font-bold text-white tracking-tighter text-sm shadow-sm">
+                  DP
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-base font-semibold tracking-tight text-white">DeepPredict</h1>
+                    <span className="text-[11px] font-mono uppercase px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">FD001 Turbofan</span>
+                  </div>
+                  <p className="text-xs text-slate-500 font-normal">NASA C-MAPSS Remaining Useful Life Prognostics</p>
+                </div>
+              </div>
+
+              {/* Navigation Tabs */}
+              <div className="flex items-center bg-[#0b0f19] border border-slate-800 p-0.5 rounded-lg text-xs font-mono">
+                <button
+                  onClick={() => setActiveTab("prognostics")}
+                  className={`px-3.5 py-1.5 rounded-md transition-all ${
+                    activeTab === "prognostics"
+                      ? "bg-slate-800 text-white font-semibold shadow-sm"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  Prognostics & Telemetry
+                </button>
+                <button
+                  onClick={() => setActiveTab("observability")}
+                  className={`px-3.5 py-1.5 rounded-md transition-all flex items-center gap-1.5 ${
+                    activeTab === "observability"
+                      ? "bg-slate-800 text-white font-semibold shadow-sm"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+                  ML Observability
+                </button>
+              </div>
+
+              {/* System Indicators */}
+              <div className="flex items-center gap-4">
+                <div className="hidden md:flex items-center gap-4 text-xs font-mono border-r border-slate-800 pr-4">
+                  <div>
+                    <span className="text-slate-500">Model:</span> <span className="text-blue-400 font-semibold">LSTM</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Test MAE:</span> <span className="text-emerald-400">9.97 cyc</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${apiHealth?.status === "healthy" ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`}></span>
+                  <span className="text-xs font-mono text-slate-400 uppercase tracking-wider">
+                    {apiHealth?.status === "healthy" ? "API Online" : "Connecting"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </header>
+
+          {/* Main Content Layout */}
+          <main className="max-w-7xl mx-auto p-6">
+            
+            {activeTab === "observability" ? (
+              /* Observability View */
+              <ObservabilityView
+                monitoringStatus={monitoringStatus}
+                driftReport={driftReport}
+                loadingDrift={loadingDrift}
+                onRefresh={loadObservability}
+              />
+            ) : (
+              /* Prognostics View */
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Left Column: Fleet Explorer */}
+                <div className="lg:col-span-4 flex flex-col gap-4">
+                  <div className="bg-[#111726] border border-slate-800 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h2 className="text-xs font-mono uppercase tracking-wider text-slate-400 font-semibold">Fleet Engines ({engines.length})</h2>
+                      <span className="text-xs text-slate-500 font-mono">100 Test Units</span>
+                    </div>
+
+                    <input
+                      type="text"
+                      placeholder="Filter by Engine ID #..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full bg-[#0b0f19] border border-slate-800 rounded px-3 py-1.5 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 mb-3"
+                    />
+
+                    <div className="grid grid-cols-4 gap-1.5 mb-3 text-[11px] font-mono">
+                      {["ALL", "HEALTHY", "WARNING", "CRITICAL"].map((status) => (
+                        <button
+                          key={status}
+                          onClick={() => setFilterStatus(status)}
+                          className={`px-2 py-1 rounded text-center transition-colors ${
+                            filterStatus === status
+                              ? "bg-slate-700 text-white font-semibold"
+                              : "bg-[#0b0f19] text-slate-400 hover:bg-slate-800 hover:text-slate-300"
+                          }`}
+                        >
+                          {status === "ALL" ? "All" : status.slice(0, 4)} ({counts[status]})
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="max-h-[500px] overflow-y-auto space-y-1.5 pr-1">
+                      {filteredEngines.map((eng) => {
+                        const isSelected = eng.unit_id === selectedUnit;
+                        return (
+                          <div
+                            key={eng.unit_id}
+                            onClick={() => setSelectedUnit(eng.unit_id)}
+                            className={`flex items-center justify-between px-3 py-2 rounded border cursor-pointer transition-all ${
+                              isSelected
+                                ? "bg-blue-950/40 border-blue-600 text-white shadow-sm"
+                                : "bg-[#0b0f19] border-slate-800/80 text-slate-300 hover:bg-[#141b2d] hover:border-slate-700"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-medium text-xs">Unit #{eng.unit_id}</span>
+                              <span className="text-[11px] text-slate-500 font-mono">{eng.total_cycles} cyc</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-mono text-slate-400">{eng.ground_truth_rul.toFixed(0)} RUL</span>
+                              <StatusBadge status={eng.status} size="sm" />
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {filteredEngines.length === 0 && (
+                        <div className="text-center py-8 text-xs text-slate-600 font-mono">
+                          No matching engines found.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column: Prognostics & Telemetry */}
+                <div className="lg:col-span-8 flex flex-col gap-6">
+
+                  {/* Prognosis Card */}
+                  <div className="bg-[#111726] border border-slate-800 rounded-lg p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-800">
+                      <div className="flex items-center gap-3">
+                        <h2 className="text-lg font-semibold text-white tracking-tight">
+                          Test Engine #{selectedUnit}
+                        </h2>
+                        {engineDetail && <StatusBadge status={prediction ? prediction.health_status : engineDetail.status} />}
+                      </div>
+
+                      <button
+                        onClick={handleRunInference}
+                        disabled={loadingInference}
+                        className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:bg-slate-800 disabled:text-slate-600 text-white text-xs font-medium rounded transition-colors shadow-sm"
+                      >
+                        {loadingInference ? (
+                          <>
+                            <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                            Running Predictor...
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            Run Live LSTM Inference
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4">
+                      <div className="bg-[#0b0f19] border border-slate-800/80 rounded p-3">
+                        <div className="text-[11px] font-mono uppercase text-slate-500 mb-1">Observed Cycles</div>
+                        <div className="text-xl font-bold font-mono text-white">
+                          {engineDetail ? engineDetail.total_cycles : "—"}
+                          <span className="text-xs font-normal text-slate-500 ml-1">cycles</span>
+                        </div>
+                      </div>
+
+                      <div className="bg-[#0b0f19] border border-slate-800/80 rounded p-3">
+                        <div className="text-[11px] font-mono uppercase text-slate-500 mb-1">Ground Truth RUL</div>
+                        <div className="text-xl font-bold font-mono text-slate-300">
+                          {engineDetail ? engineDetail.ground_truth_rul.toFixed(1) : "—"}
+                          <span className="text-xs font-normal text-slate-500 ml-1">cycles</span>
+                        </div>
+                      </div>
+
+                      <div className="bg-[#0b0f19] border border-blue-900/40 rounded p-3 relative overflow-hidden">
+                        <div className="text-[11px] font-mono uppercase text-blue-400 mb-1">Predicted RUL</div>
+                        <div className="text-xl font-bold font-mono text-blue-400">
+                          {prediction ? prediction.predicted_rul.toFixed(1) : "—"}
+                          <span className="text-xs font-normal text-blue-400/70 ml-1">cycles</span>
+                        </div>
+                      </div>
+
+                      <div className="bg-[#0b0f19] border border-slate-800/80 rounded p-3">
+                        <div className="text-[11px] font-mono uppercase text-slate-500 mb-1">Prediction Delta</div>
+                        <div className="text-xl font-bold font-mono">
+                          {prediction ? (
+                            <span className={prediction.error >= 0 ? "text-amber-400" : "text-emerald-400"}>
+                              {prediction.error > 0 ? `+${prediction.error}` : prediction.error}
+                              <span className="text-xs font-normal text-slate-500 ml-1">cyc</span>
+                            </span>
+                          ) : (
+                            <span className="text-slate-600">—</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {prediction && (
+                      <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs font-mono text-slate-400">
+                        <div>
+                          Inference Latency: <span className="text-emerald-400">{prediction.latency_ms.toFixed(1)} ms</span>
+                        </div>
+                        <div>
+                          Safety Margin: <span className="text-slate-300">{prediction.error <= 0 ? "Conservative (Early Removal)" : "Aggressive (Late Removal)"}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Degradation Telemetry Section */}
+                  <div className="bg-[#111726] border border-slate-800 rounded-lg p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                      <div>
+                        <h3 className="text-sm font-semibold text-white tracking-tight">Sensor Degradation Telemetry</h3>
+                        <p className="text-xs text-slate-500">Normalized wear progression over recorded operational cycles</p>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {Object.keys(SENSOR_META).slice(0, 6).map((key) => {
+                          const meta = SENSOR_META[key];
+                          const isActive = activeSensors.includes(key);
+                          return (
+                            <button
+                              key={key}
+                              onClick={() => toggleSensor(key)}
+                              className={`text-xs font-mono px-2 py-0.5 rounded border transition-colors flex items-center gap-1.5 ${
+                                isActive
+                                  ? "bg-slate-800 border-slate-600 text-white"
+                                  : "bg-[#0b0f19] border-slate-800/80 text-slate-500 hover:text-slate-400"
+                              }`}
+                            >
+                              <span
+                                className="w-2 h-2 rounded-full"
+                                style={{ backgroundColor: meta.color }}
+                              ></span>
+                              {meta.code}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <SensorTelemetryChart
+                      trajectory={engineDetail?.trajectory || []}
+                      activeSensors={activeSensors}
+                    />
+                  </div>
+
+                  {/* Benchmark Reference */}
+                  <div className="bg-[#111726] border border-slate-800 rounded-lg p-4">
+                    <h4 className="text-xs font-mono uppercase text-slate-400 font-semibold mb-3">Model Performance Benchmarks (NASA FD001)</h4>
+                    <table className="w-full text-xs font-mono">
+                      <thead>
+                        <tr className="border-b border-slate-800 text-slate-500 text-left">
+                          <th className="pb-2">Architecture</th>
+                          <th className="pb-2">Input Window</th>
+                          <th className="pb-2">MAE</th>
+                          <th className="pb-2">RMSE</th>
+                          <th className="pb-2">PHM Score</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60">
+                        <tr>
+                          <td className="py-2 text-white font-medium">LSTM Network</td>
+                          <td className="py-2 text-slate-400">30-cycle Sequence (30, 14)</td>
+                          <td className="py-2 text-emerald-400">9.97 cyc</td>
+                          <td className="py-2 text-emerald-400">13.31 cyc</td>
+                          <td className="py-2 text-emerald-400">296.3</td>
+                        </tr>
+                        <tr>
+                          <td className="py-2 text-slate-400">Random Forest</td>
+                          <td className="py-2 text-slate-400">Engineered Window Stats</td>
+                          <td className="py-2 text-slate-400">12.72 cyc</td>
+                          <td className="py-2 text-slate-400">18.04 cyc</td>
+                          <td className="py-2 text-slate-400">1,220.7</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                </div>
+              </div>
+            )}
+          </main>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<App />);
+  </script>
+</body>
+</html>
